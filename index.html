@@ -224,11 +224,23 @@
                             </div>
                         </div>
 
-                        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-colors mt-4">
-                            <i class="fas fa-plus-circle mr-2"></i> Tambahkan Tombol ke Portal
-                        </button>
+                        <div class="flex gap-3 mt-4">
+                            <button type="submit" id="submit-app-btn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-colors">
+                                <i class="fas fa-plus-circle mr-2"></i> Tambahkan Tombol
+                            </button>
+                            <button type="button" id="cancel-edit-btn" onclick="cancelEdit()" class="hidden bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-colors">
+                                Batal
+                            </button>
+                        </div>
                     </div>
                 </form>
+            </div>
+
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8 max-w-2xl mx-auto mt-6">
+                <h3 class="text-lg font-bold text-gray-800 mb-4 flex items-center"><i class="fas fa-list-ul mr-2 text-blue-500"></i> Daftar Aplikasi Terpasang</h3>
+                <div id="admin-app-list" class="space-y-3">
+                    <!-- Data list akan dirender oleh JavaScript disini -->
+                </div>
             </div>
         </section>
 
@@ -276,6 +288,8 @@
 
         // Simpan state saat ini
         let currentLevel = null;
+        let editingAppId = null;
+        let editingOriginalLevel = null;
 
         // --- 2. SISTEM NAVIGASI (SPA LOGIC) ---
         
@@ -381,11 +395,12 @@
         function promptAdmin() {
             // Simulasi keamanan sederhana menggunakan prompt
             // Dalam dunia nyata, ini memerlukan backend dan sistem login otentik
-            const password = prompt("khusus admin");
+            const password = prompt("Masukkan PIN Admin untuk mengatur portal");
             
             if (password === 'adminbermartabat') {
                 showNotification("Akses Admin Diberikan", "fas fa-unlock");
                 navigate('admin');
+                renderAdminList(); // Render daftar saat masuk halaman admin
             } else if (password !== null) {
                 alert("PIN Salah! Akses ditolak.");
             }
@@ -396,8 +411,8 @@
             
             // Ambil nilai dari form
             const level = document.getElementById('app-level').value;
-            const newApp = {
-                id: 'app_' + Date.now(), // Generate ID unik simpel
+            const appData = {
+                id: editingAppId ? editingAppId : 'app_' + Date.now(),
                 title: document.getElementById('app-title').value,
                 url: document.getElementById('app-url').value,
                 desc: document.getElementById('app-desc').value,
@@ -405,19 +420,137 @@
                 color: document.getElementById('app-color').value
             };
 
-            // Ambil data lama, tambahkan data baru
             const currentData = getAppData();
-            currentData[level].push(newApp);
+
+            if (editingAppId) {
+                // Jika sedang mode edit
+                if (editingOriginalLevel !== level) {
+                    // Pindah level (contoh: dari TK ke SD)
+                    currentData[editingOriginalLevel] = currentData[editingOriginalLevel].filter(a => a.id !== editingAppId);
+                    currentData[level].push(appData);
+                } else {
+                    // Update di level yang sama
+                    const index = currentData[level].findIndex(a => a.id === editingAppId);
+                    if (index !== -1) currentData[level][index] = appData;
+                }
+                showNotification(`Perubahan "${appData.title}" berhasil disimpan!`, "fas fa-check-circle");
+            } else {
+                // Jika mode tambah baru
+                currentData[level].push(appData);
+                showNotification(`Berhasil menambahkan "${appData.title}"!`, "fas fa-check-circle");
+            }
 
             // Simpan kembali ke LocalStorage
             localStorage.setItem('agisPortalData', JSON.stringify(currentData));
 
-            // Reset form
-            document.getElementById('add-app-form').reset();
+            // Reset form dan render ulang daftar di admin
+            cancelEdit();
+            renderAdminList(); 
+        }
 
-            // Beri feedback dan arahkan kembali
-            showNotification(`Berhasil menambahkan "${newApp.title}" ke ${level}!`, "fas fa-check-circle");
-            navigate('level', level); // Langsung lihat hasilnya
+        function renderAdminList() {
+            const data = getAppData();
+            const listEl = document.getElementById('admin-app-list');
+            listEl.innerHTML = '';
+            
+            let hasApps = false;
+
+            ['kindergarten', 'primary'].forEach(level => {
+                if(data[level] && data[level].length > 0) {
+                    hasApps = true;
+                    // Buat Header Kategori
+                    const levelTitle = document.createElement('h4');
+                    levelTitle.className = 'font-semibold text-gray-500 border-b pb-1 mt-4 mb-2 uppercase text-xs tracking-wider';
+                    levelTitle.textContent = level === 'kindergarten' ? 'Unit: Kindergarten (TK)' : 'Unit: Primary School (SD)';
+                    listEl.appendChild(levelTitle);
+
+                    // Buat List Item
+                    data[level].forEach(app => {
+                        const item = document.createElement('div');
+                        item.className = 'flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-200 hover:border-blue-300 transition-colors';
+                        item.innerHTML = `
+                            <div class="flex items-center space-x-3 overflow-hidden">
+                                <div class="w-10 h-10 flex-shrink-0 rounded-lg bg-gray-200 text-gray-600 flex items-center justify-center">
+                                    <i class="fas ${app.icon}"></i>
+                                </div>
+                                <div class="min-w-0">
+                                    <h5 class="font-bold text-gray-800 text-sm truncate">${app.title}</h5>
+                                    <p class="text-xs text-gray-500 truncate w-full">${app.url}</p>
+                                </div>
+                            </div>
+                            <div class="flex space-x-1 flex-shrink-0 ml-2">
+                                <button onclick="editApp('${level}', '${app.id}')" class="text-blue-600 hover:bg-blue-100 p-2 rounded-lg transition" title="Edit Aplikasi">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <button onclick="deleteApp('${level}', '${app.id}')" class="text-red-500 hover:bg-red-100 p-2 rounded-lg transition" title="Hapus Aplikasi">
+                                    <i class="fas fa-trash-alt"></i>
+                                </button>
+                            </div>
+                        `;
+                        listEl.appendChild(item);
+                    });
+                }
+            });
+            
+            if (!hasApps) {
+                listEl.innerHTML = '<div class="text-center py-6 text-gray-400"><i class="fas fa-inbox text-3xl mb-2 block"></i> Belum ada aplikasi terdaftar.</div>';
+            }
+        }
+
+        function editApp(level, id) {
+            const data = getAppData();
+            const app = data[level].find(a => a.id === id);
+            if(!app) return;
+
+            editingAppId = id;
+            editingOriginalLevel = level;
+
+            // Isi nilai form dengan data eksisting
+            document.getElementById('app-level').value = level;
+            document.getElementById('app-title').value = app.title;
+            document.getElementById('app-url').value = app.url;
+            document.getElementById('app-desc').value = app.desc;
+            document.getElementById('app-icon').value = app.icon;
+            document.getElementById('app-color').value = app.color;
+
+            // Ubah tampilan tombol
+            const submitBtn = document.getElementById('submit-app-btn');
+            submitBtn.innerHTML = '<i class="fas fa-save mr-2"></i> Simpan Perubahan';
+            submitBtn.className = 'flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-colors';
+            
+            document.getElementById('cancel-edit-btn').classList.remove('hidden');
+
+            // Scroll mulus ke form
+            document.getElementById('view-admin').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function cancelEdit() {
+            editingAppId = null;
+            editingOriginalLevel = null;
+            document.getElementById('add-app-form').reset();
+            
+            // Kembalikan tampilan tombol ke awal
+            const submitBtn = document.getElementById('submit-app-btn');
+            submitBtn.innerHTML = '<i class="fas fa-plus-circle mr-2"></i> Tambahkan Tombol';
+            submitBtn.className = 'flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-colors';
+            
+            document.getElementById('cancel-edit-btn').classList.add('hidden');
+        }
+
+        function deleteApp(level, id) {
+            if(confirm("Apakah Anda yakin ingin menghapus aplikasi ini dari portal? Tindakan ini tidak dapat dibatalkan.")) {
+                const data = getAppData();
+                // Filter hapus data berdasarkan id
+                data[level] = data[level].filter(a => a.id !== id);
+                localStorage.setItem('agisPortalData', JSON.stringify(data));
+                
+                // Render ulang daftar aplikasi dan tampilkan notifikasi
+                renderAdminList();
+                showNotification("Aplikasi berhasil dihapus", "fas fa-trash-alt");
+                
+                // Jika sedang diedit lalu dihapus, batalkan edit
+                if(editingAppId === id) cancelEdit();
+            }
         }
 
         function resetData() {
